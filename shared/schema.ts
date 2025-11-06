@@ -36,6 +36,10 @@ export const posts = pgTable("posts", {
   isFree: boolean("is_free").default(false).notNull(),
   buyoutPrice: decimal("buyout_price", { precision: 18, scale: 6 }), // Optional buyout price
   acceptedCryptos: text("accepted_cryptos").notNull().default('USDC'), // Comma-separated: USDC,SOL,ETH,MATIC
+  
+  // Investor settings
+  maxInvestors: integer("max_investors").default(10).notNull(), // 1-100 investor slots
+  investorRevenueShare: decimal("investor_revenue_share", { precision: 5, scale: 2 }).default('0').notNull(), // Percentage (0-100) that investors get from each unlock
 
   // Comments gating
   commentsLocked: boolean("comments_locked").default(false).notNull(),
@@ -167,7 +171,7 @@ export const investors = pgTable("investors", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
   postId: text("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  position: integer("position").notNull(), // 1-10
+  position: integer("position").notNull(), // 1-100 (based on post's maxInvestors setting)
   investmentAmount: decimal("investment_amount", { precision: 18, scale: 6 }).notNull(), // Price they paid
   totalEarnings: decimal("total_earnings", { precision: 18, scale: 6 }).notNull().default(sql`0.0`), // Accumulated earnings
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -177,6 +181,19 @@ export const investors = pgTable("investors", {
   // Ensure only one investor per position for a post
   uniquePositionPost: unique().on(table.postId, table.position),
 }));
+
+// Platform Fees - Track all TEASR platform fees (0.05 USDC per transaction)
+export const platformFees = pgTable("platform_fees", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  paymentId: text("payment_id").notNull().references(() => payments.id, { onDelete: "cascade" }),
+  postId: text("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 18, scale: 6 }).notNull(), // Always 0.05 USDC
+  cryptocurrency: text("cryptocurrency").notNull().default('USDC'),
+  transactionHash: text("transaction_hash"), // Hash of fee transfer to platform wallet
+  platformWallet: text("platform_wallet").notNull().default('0x47aB5ba5f987A8f75f8Ef2F0D8FF33De1A04a020'),
+  status: text("status").notNull().default('pending'), // 'pending', 'completed', 'failed'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 // Pinned Posts - users can pin top-earning posts to their profile
 export const pinnedPosts = pgTable("pinned_posts", {
@@ -220,15 +237,28 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   notifications: many(notifications),
   investors: many(investors),
   pinnedBy: many(pinnedPosts),
+  platformFees: many(platformFees),
 }));
 
-export const paymentsRelations = relations(payments, ({ one }) => ({
+export const paymentsRelations = relations(payments, ({ one, many }) => ({
   user: one(users, {
     fields: [payments.userId],
     references: [users.id],
   }),
   post: one(posts, {
     fields: [payments.postId],
+    references: [posts.id],
+  }),
+  platformFees: many(platformFees),
+}));
+
+export const platformFeesRelations = relations(platformFees, ({ one }) => ({
+  payment: one(payments, {
+    fields: [platformFees.paymentId],
+    references: [payments.id],
+  }),
+  post: one(posts, {
+    fields: [platformFees.postId],
     references: [posts.id],
   }),
 }));
@@ -384,6 +414,8 @@ export const insertPostSchema = createInsertSchema(posts).pick({
   buyoutPrice: z.string().regex(/^\d+(\.\d{1,6})?$/, "Invalid price format").optional(),
   acceptedCryptos: z.string().optional(),
   commentFee: z.string().regex(/^\d+(\.\d{1,6})?$/, "Invalid price format").optional(),
+  maxInvestors: z.number().min(1).max(100).optional(),
+  investorRevenueShare: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage format").optional(),
 });
 
 export const insertPaymentSchema = createInsertSchema(payments).pick({
@@ -507,6 +539,10 @@ export type DirectMessageWithUsers = DirectMessage & {
 // Investor types
 export type Investor = typeof investors.$inferSelect;
 export type InsertInvestor = z.infer<typeof insertInvestorSchema>;
+
+// Platform fee types
+export type PlatformFee = typeof platformFees.$inferSelect;
+export type InsertPlatformFee = typeof platformFees.$inferInsert;
 
 // Pinned post types
 export type PinnedPost = typeof pinnedPosts.$inferSelect;
