@@ -154,10 +154,10 @@ export default function Feed() {
           {/* Header */}
           <div className="text-center mb-12">
             <h1 className="text-4xl sm:text-5xl font-bold font-display mb-4 bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">
-              GET PAID, TO GO VIRAL
+              GET PAID, TO POST
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Creators set prices, you pay to reveal. Upvote the best, unlock what matters.
+              Token Gate your Content and Earn with x402 Protocol
             </p>
           </div>
 

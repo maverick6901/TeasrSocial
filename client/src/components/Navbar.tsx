@@ -84,7 +84,7 @@ export function Navbar() {
 
           {/* Search Bar - Desktop Only */}
           {address && (
-            <div className="hidden md:block flex-1 max-w-md mx-4">
+            <div className="block flex-1 max-w-md mx-4 w-full">
               <UserSearch />
             </div>
           )}

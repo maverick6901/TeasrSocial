@@ -9,6 +9,7 @@ import {
   viralNotifications,
   follows,
   notifications,
+  directMessages,
   referralCodes as referralCodesTable, // Added for referral system, aliased to avoid naming conflict
   referrals, // Added for referral system
   investors,
@@ -881,25 +882,28 @@ export class DatabaseStorage implements IStorage {
 
   // Get users who have paid for the creator's content
   async getUsersWhoPaidForContent(creatorId: string): Promise<User[]> {
-    const result = await withRetry(() =>
-      db.execute(sql`
-        SELECT DISTINCT
-          u.id,
-          u.username,
-          u.wallet_address as "walletAddress",
-          u.profile_image_path as "profileImagePath",
-          u.bio,
-          u.created_at as "createdAt",
-          u.updated_at as "updatedAt"
-        FROM users u
-        INNER JOIN payments p ON p.user_id = u.id
-        INNER JOIN posts po ON po.id = p.post_id
-        WHERE po.creator_id = ${creatorId}
-        ORDER BY p.created_at DESC
-      `)
+    const paidUsers = await withRetry(() =>
+      db
+        .selectDistinct({
+          id: users.id,
+          username: users.username,
+          walletAddress: users.walletAddress,
+          profileImagePath: users.profileImagePath,
+          bio: users.bio,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+        })
+        .from(users)
+        .innerJoin(payments, eq(payments.userId, users.id))
+        .innerJoin(posts, eq(posts.id, payments.postId))
+        .where(and(
+          eq(posts.creatorId, creatorId),
+          eq(payments.paymentType, 'content')
+        ))
+        .orderBy(desc(payments.paidAt))
     );
 
-    return result.rows as User[];
+    return paidUsers;
   }
 
   // Referral Code Methods (Added)
