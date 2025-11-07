@@ -1,0 +1,57 @@
+--> npm install --no-audit @layerzerolabs/lz-v2-utilities @solana/web3.js @solana/wallet-adapter-base @solana/wallet-adapter-wallets
+npm warn deprecated lodash.isequal@4.5.0: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
+npm warn deprecated uuidv4@6.2.13: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+npm warn deprecated @toruslabs/solana-embed@2.1.0: This sdk is now deprecated. Please use @web3auth/ws-embed instead
+npm warn deprecated @walletconnect/sign-client@2.19.0: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/sign-client@2.19.1: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/sign-client@2.19.1: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/sign-client@2.19.1: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/universal-provider@2.19.1: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/universal-provider@2.19.1: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/universal-provider@2.19.1: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm warn deprecated @walletconnect/universal-provider@2.19.0: Reliability and performance improvements. See: https://github.com/WalletConnect/walletconnect-monorepo/releases
+npm error code 1
+npm error path /home/runner/workspace/node_modules/usb
+npm error command failed
+npm error command sh -c node-gyp-build
+npm error gyp info it worked if it ends with ok
+npm error gyp info using node-gyp@10.1.0
+npm error gyp info using node@20.19.3 | linux | x64
+npm error gyp ERR! find Python 
+npm error gyp ERR! find Python Python is not set from command line or npm configuration
+npm error gyp ERR! find Python Python is not set from environment variable PYTHON
+npm error gyp ERR! find Python checking if "python3" can be used
+npm error gyp ERR! find Python - executable path is ""
+npm error gyp ERR! find Python - "" could not be run
+npm error gyp ERR! find Python checking if "python" can be used
+npm error gyp ERR! find Python - executable path is ""
+npm error gyp ERR! find Python - "" could not be run
+npm error gyp ERR! find Python 
+npm error gyp ERR! find Python **********************************************************
+npm error gyp ERR! find Python You need to install the latest version of Python.
+npm error gyp ERR! find Python Node-gyp should be able to find and use Python. If not,
+npm error gyp ERR! find Python you can try one of the following options:
+npm error gyp ERR! find Python - Use the switch --python="/path/to/pythonexecutable"
+npm error gyp ERR! find Python (accepted by both node-gyp and npm)
+npm error gyp ERR! find Python - Set the environment variable PYTHON
+npm error gyp ERR! find Python - Set the npm configuration variable python:
+npm error gyp ERR! find Python npm config set python "/path/to/pythonexecutable"
+npm error gyp ERR! find Python For more information consult the documentation at:
+npm error gyp ERR! find Python https://github.com/nodejs/node-gyp#installation
+npm error gyp ERR! find Python **********************************************************
+npm error gyp ERR! find Python 
+npm error gyp ERR! configure error 
+npm error gyp ERR! stack Error: Could not find any Python installation to use
+npm error gyp ERR! stack at PythonFinder.fail (/nix/store/lz7iav1hd92jbv44zf2rdd7b2mj23536-nodejs-20.19.3/lib/node_modules/npm/node_modules/node-gyp/lib/find-python.js:306:11)
+npm error gyp ERR! stack at PythonFinder.findPython (/nix/store/lz7iav1hd92jbv44zf2rdd7b2mj23536-nodejs-20.19.3/lib/node_modules/npm/node_modules/node-gyp/lib/find-python.js:164:17)
+npm error gyp ERR! stack at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+npm error gyp ERR! stack at async configure (/nix/store/lz7iav1hd92jbv44zf2rdd7b2mj23536-nodejs-20.19.3/lib/node_modules/npm/node_modules/node-gyp/lib/configure.js:27:18)
+npm error gyp ERR! stack at async run (/nix/store/lz7iav1hd92jbv44zf2rdd7b2mj23536-nodejs-20.19.3/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js:81:18)
+npm error gyp ERR! System Linux 6.14.11
+npm error gyp ERR! command "/nix/store/lz7iav1hd92jbv44zf2rdd7b2mj23536-nodejs-20.19.3/bin/node" "/nix/store/lz7iav1hd92jbv44zf2rdd7b2mj23536-nodejs-20.19.3/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js" "rebuild"
+npm error gyp ERR! cwd /home/runner/workspace/node_modules/usb
+npm error gyp ERR! node -v v20.19.3
+npm error gyp ERR! node-gyp -v v10.1.0
+npm error gyp ERR! not ok
+npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2025-11-07T03_52_28_498Z-debug-0.log
+exit status 1
