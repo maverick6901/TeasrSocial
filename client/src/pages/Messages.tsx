@@ -47,17 +47,29 @@ export default function Messages() {
   });
 
   // Get users with payment relationships (can message them)
-  const { data: paymentRelationships } = useQuery<{ patrons: UserType[]; creatorsPaid: UserType[] }>({
+  const { data: paymentRelationships, refetch: refetchRelationships } = useQuery<{ patrons: UserType[]; creatorsPaid: UserType[] }>({
     queryKey: ['payment-relationships', currentUser?.id],
     enabled: !!currentUser?.id,
     queryFn: async () => {
       const res = await fetch(`${API_URL}/api/users/payment-relationships`, {
         headers: { 'x-wallet-address': address || '' },
       });
-      if (!res.ok) return { patrons: [], creatorsPaid: [] };
-      return res.json();
+      if (!res.ok) {
+        console.error('Failed to fetch payment relationships:', res.status);
+        return { patrons: [], creatorsPaid: [] };
+      }
+      const data = await res.json();
+      console.log('Payment relationships loaded:', data);
+      return data;
     },
   });
+
+  // Refetch relationships when navigating to messages
+  useEffect(() => {
+    if (currentUser?.id) {
+      refetchRelationships();
+    }
+  }, [currentUser?.id, refetchRelationships]);
 
   // Combine patrons and creators, remove duplicates
   const availableChats = React.useMemo(() => {
@@ -66,6 +78,12 @@ export default function Messages() {
     const uniqueUsers = combined.filter((user, index, self) =>
       index === self.findIndex((u) => u.id === user.id)
     );
+    console.log('Available chats:', {
+      patronsCount: paymentRelationships.patrons.length,
+      creatorsPaidCount: paymentRelationships.creatorsPaid.length,
+      uniqueUsersCount: uniqueUsers.length,
+      users: uniqueUsers.map(u => u.username),
+    });
     return uniqueUsers;
   }, [paymentRelationships]);
 

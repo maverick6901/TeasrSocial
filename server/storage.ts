@@ -932,12 +932,36 @@ export class DatabaseStorage implements IStorage {
 
   // Get both payment relationships for a user
   async getPaymentRelationshipsForUser(userId: string): Promise<{ patrons: User[]; creatorsPaid: User[] }> {
-    const [patrons, creatorsPaid] = await Promise.all([
-      this.getUsersWhoPaidForContent(userId),
-      this.getCreatorsCurrentUserPaid(userId)
-    ]);
+    // Get users who have paid this user (patrons) - both content and comment payments
+    const patronsResult = await this.db
+      .select({ user: users })
+      .from(payments) // Use the payments table directly, not a specific 'contentPayments'
+      .innerJoin(posts, eq(payments.postId, posts.id))
+      .innerJoin(users, eq(payments.userId, users.id))
+      .where(eq(posts.creatorId, userId))
+      .groupBy(users.id);
 
-    return { patrons, creatorsPaid };
+    // Get creators this user has paid - both content and comment payments
+    const creatorsPaidResult = await this.db
+      .select({ user: users })
+      .from(payments) // Use the payments table directly, not a specific 'contentPayments'
+      .innerJoin(posts, eq(payments.postId, posts.id))
+      .innerJoin(users, eq(posts.creatorId, users.id))
+      .where(eq(payments.userId, userId))
+      .groupBy(users.id);
+
+    const patrons = patronsResult.map(r => r.user);
+    const creatorsPaid = creatorsPaidResult.map(r => r.user);
+
+    console.log(`Payment relationships query results for user ${userId}:`, {
+      patronsCount: patrons.length,
+      creatorsPaidCount: creatorsPaid.length,
+    });
+
+    return {
+      patrons,
+      creatorsPaid,
+    };
   }
 
   // Referral Code Methods (Added)
