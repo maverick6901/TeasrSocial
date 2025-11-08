@@ -53,7 +53,7 @@ export default function Messages() {
   // -----------------------------
   const { data: paymentRelationships } = useQuery<{ patrons: UserType[]; creatorsPaid: UserType[] }>({
     queryKey: ['payment-relationships', currentUser?.id],
-    enabled: !!currentUser?.id,
+    enabled: !!currentUser?.id && !!address,
     queryFn: async () => {
       const res = await fetch(`${API_URL}/api/users/payment-relationships`, {
         headers: { 'x-wallet-address': address || '' },
@@ -74,7 +74,7 @@ export default function Messages() {
   }, [paymentRelationships]);
 
   // -----------------------------
-  // 3. Messages Query
+  // 3. Messages
   // -----------------------------
   const { data: messages = [] } = useQuery<DirectMessageWithUsers[]>({
     queryKey: ['messages', selectedUser?.id],
