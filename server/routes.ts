@@ -23,7 +23,7 @@ import { generateAccessToken, verifyAccessToken } from "./services/jwt";
 import cron from "node-cron";
 import { convertFromUSD, formatPrice, getAllPrices } from "./services/priceConversion";
 import { db } from './db';
-import { users, posts, payments, comments, votes, investors, platformFees } from '@shared/schema';
+import { users, posts, payments, comments, votes, investors, platformFees, commentLikes } from '@shared/schema';
 import { eq, desc, and, sql, count } from 'drizzle-orm';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -1201,7 +1201,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const comments = await storage.getCommentsByPost(req.params.id);
-      res.json(comments);
+      
+      // Add like info for each comment if user is logged in
+      const commentsWithLikes = await Promise.all(
+        comments.map(async (comment) => {
+          let hasUserLiked = false;
+          if (user) {
+            const like = await db.query.commentLikes.findFirst({
+              where: and(
+                eq(commentLikes.commentId, comment.id),
+                eq(commentLikes.userId, user.id)
+              ),
+            });
+            hasUserLiked = !!like;
+          }
+          return { ...comment, hasUserLiked };
+        })
+      );
+      
+      res.json(commentsWithLikes);
     } catch (error: any) {
       console.error('Get comments error:', error);
       res.status(500).json({ error: error.message });
@@ -1258,6 +1276,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(comment);
     } catch (error: any) {
       console.error('Comment error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete comment
+  app.delete('/api/comments/:commentId', async (req, res) => {
+    try {
+      const user = await getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const comment = await db.query.comments.findFirst({
+        where: eq(comments.id, req.params.commentId),
+      });
+
+      if (!comment) {
+        return res.status(404).json({ error: 'Comment not found' });
+      }
+
+      // Only the comment author can delete it
+      if (comment.userId !== user.id) {
+        return res.status(403).json({ error: 'You can only delete your own comments' });
+      }
+
+      await db.delete(comments).where(eq(comments.id, req.params.commentId));
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete comment error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Like/Unlike comment
+  app.post('/api/comments/:commentId/like', async (req, res) => {
+    try {
+      const user = await getCurrentUser(req);
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const comment = await db.query.comments.findFirst({
+        where: eq(comments.id, req.params.commentId),
+      });
+
+      if (!comment) {
+        return res.status(404).json({ error: 'Comment not found' });
+      }
+
+      // Check if user already liked this comment
+      const existingLike = await db.query.commentLikes.findFirst({
+        where: and(
+          eq(commentLikes.commentId, req.params.commentId),
+          eq(commentLikes.userId, user.id)
+        ),
+      });
+
+      if (existingLike) {
+        // Unlike - remove the like
+        await db.delete(commentLikes).where(eq(commentLikes.id, existingLike.id));
+        
+        // Decrement like count
+        await db.update(comments)
+          .set({ likeCount: sql`${comments.likeCount} - 1` })
+          .where(eq(comments.id, req.params.commentId));
+
+        res.json({ liked: false });
+      } else {
+        // Like - add the like
+        await db.insert(commentLikes).values({
+          commentId: req.params.commentId,
+          userId: user.id,
+        });
+        
+        // Increment like count
+        await db.update(comments)
+          .set({ likeCount: sql`${comments.likeCount} + 1` })
+          .where(eq(comments.id, req.params.commentId));
+
+        res.json({ liked: true });
+      }
+    } catch (error: any) {
+      console.error('Like comment error:', error);
       res.status(500).json({ error: error.message });
     }
   });

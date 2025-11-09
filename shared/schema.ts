@@ -84,8 +84,20 @@ export const comments = pgTable("comments", {
   postId: text("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
+  likeCount: integer("like_count").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Comment Likes - users can like comments
+export const commentLikes = pgTable("comment_likes", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  commentId: text("comment_id").notNull().references(() => comments.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // One like per user per comment
+  uniqueUserCommentLike: unique().on(table.userId, table.commentId),
+}));
 
 // Votes - upvotes and downvotes
 export const votes = pgTable("votes", {
@@ -263,13 +275,25 @@ export const platformFeesRelations = relations(platformFees, ({ one }) => ({
   }),
 }));
 
-export const commentsRelations = relations(comments, ({ one }) => ({
+export const commentsRelations = relations(comments, ({ one, many }) => ({
   post: one(posts, {
     fields: [comments.postId],
     references: [posts.id],
   }),
   user: one(users, {
     fields: [comments.userId],
+    references: [users.id],
+  }),
+  likes: many(commentLikes),
+}));
+
+export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
+  comment: one(comments, {
+    fields: [commentLikes.commentId],
+    references: [comments.id],
+  }),
+  user: one(users, {
+    fields: [commentLikes.userId],
     references: [users.id],
   }),
 }));
@@ -495,6 +519,9 @@ export type InsertPayment = typeof payments.$inferInsert;
 export type Comment = typeof comments.$inferSelect;
 export type InsertComment = typeof comments.$inferInsert;
 
+export type CommentLike = typeof commentLikes.$inferSelect;
+export type InsertCommentLike = typeof commentLikes.$inferInsert;
+
 export type Vote = typeof votes.$inferSelect;
 export type InsertVote = typeof votes.$inferInsert;
 
@@ -574,6 +601,7 @@ export interface InvestorDashboard {
 
 export type CommentWithUser = Comment & {
   user: User;
+  hasUserLiked?: boolean;
 };
 
 export type UserWithStats = User & {

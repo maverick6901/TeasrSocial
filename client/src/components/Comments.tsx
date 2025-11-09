@@ -3,12 +3,13 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Lock, Send, User, MessageCircle } from 'lucide-react';
+import { Lock, Send, User, MessageCircle, Heart, Trash2 } from 'lucide-react';
 import { CommentWithUser, PostWithCreator } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'wouter';
+import { useWallet } from '@/lib/wallet';
 
 interface CommentsProps {
   post: PostWithCreator;
@@ -22,7 +23,9 @@ interface CommentsProps {
 export function Comments({ post, comments, hasCommentAccess, onPayForComments, onCommentAdded, compact = false }: CommentsProps) {
   const [commentText, setCommentText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { address } = useWallet();
 
   const handleSubmitComment = async () => {
     if (!commentText.trim()) return;
@@ -49,6 +52,41 @@ export function Comments({ post, comments, hasCommentAccess, onPayForComments, o
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    setDeletingCommentId(commentId);
+    try {
+      await apiRequest('DELETE', `/api/comments/${commentId}`);
+      onCommentAdded(); // Refresh comments
+      toast({
+        title: 'Comment deleted',
+        description: 'Your comment has been removed',
+      });
+    } catch (error) {
+      console.error('Delete comment error:', error);
+      toast({
+        title: 'Failed to delete comment',
+        description: 'Please try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+
+  const handleLikeComment = async (commentId: string) => {
+    try {
+      await apiRequest('POST', `/api/comments/${commentId}/like`);
+      onCommentAdded(); // Refresh comments to show updated like count
+    } catch (error) {
+      console.error('Like comment error:', error);
+      toast({
+        title: 'Failed to like comment',
+        description: 'Please try again',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -170,9 +208,32 @@ export function Comments({ post, comments, hasCommentAccess, onPayForComments, o
                       {new Date(comment.createdAt).toLocaleDateString()}
                     </span>
                   </div>
-                  <p className="text-sm" data-testid={`comment-content-${comment.id}`}>
+                  <p className="text-sm mb-2" data-testid={`comment-content-${comment.id}`}>
                     {renderCommentContent(comment.content)}
                   </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${comment.hasUserLiked ? 'text-red-500' : 'text-muted-foreground'}`}
+                      onClick={() => handleLikeComment(comment.id)}
+                      disabled={!address}
+                    >
+                      <Heart className={`w-3 h-3 mr-1 ${comment.hasUserLiked ? 'fill-current' : ''}`} />
+                      {comment.likeCount > 0 && <span>{comment.likeCount}</span>}
+                    </Button>
+                    {address && comment.user.walletAddress === address && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteComment(comment.id)}
+                        disabled={deletingCommentId === comment.id}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             ))}
