@@ -186,10 +186,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error(errorData.message || 'Authentication failed');
       }
 
+      const userData = await authResponse.json();
+
       toast({
         title: 'Wallet connected',
         description: `Connected with ${walletType} as ${address.substring(0, 6)}...${address.substring(38)}`,
       });
+
+      // Navigate to user's profile after successful connection
+      if (userData.username) {
+        window.location.href = `/profile/${userData.username}`;
+      }
     } catch (error: any) {
       console.error('Wallet connection error:', error);
       toast({
