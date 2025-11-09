@@ -44,7 +44,7 @@ export function encryptBuffer(buffer: Buffer, key: Buffer): EncryptionResult {
  * Decrypt a buffer with AES-256-GCM using the provided key
  */
 export function decryptBuffer(encrypted: Buffer, key: Buffer, iv: Buffer, authTag: Buffer): Buffer {
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
   decipher.setAuthTag(authTag);
   
   return Buffer.concat([
