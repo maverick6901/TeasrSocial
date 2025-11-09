@@ -24,7 +24,7 @@ import cron from "node-cron";
 import { convertFromUSD, formatPrice, getAllPrices } from "./services/priceConversion";
 import { db } from './db';
 import { users, posts, payments, comments, votes, investors, platformFees, commentLikes } from '@shared/schema';
-import { eq, desc, and, sql, count } from 'drizzle-orm';
+import { eq, desc, and, sql, count, inArray } from 'drizzle-orm';
 import { x402PaymentService } from './services/x402-payment';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -798,7 +798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const investorUsers = investorUserIds.length > 0 
           ? await db.select()
               .from(users)
-              .where(sql`${users.id} = ANY(${investorUserIds})`)
+              .where(inArray(users.id, investorUserIds))
           : [];
         
         const investorsWithWallets = existingInvestors.map(inv => {

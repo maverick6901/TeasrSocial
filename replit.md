@@ -57,14 +57,18 @@ Preferred communication style: Simple, everyday language.
 - Optional: Generate short-lived JWT access token for temporary access (1 hour expiry)
 - Decryption uses AES-256-GCM with stored IV and auth tag for verification
 
-**x402 Payment Integration**:
-- Server implements x402 protocol for payment challenges
-- When unpaid user requests protected content, responds with `402 Payment Required` and payment requirements JSON
-- Payment requirements include: price, accepted currencies, recipient address, network, resource ID
-- Client uses `x402-solana` or `x402` library to construct payment transaction
-- After payment submission, server verifies transaction signature and on-chain settlement
-- Verification checks: correct amount, correct recipient, transaction confirmed on blockchain
-- Payment records stored in `payments` table with transaction hash for audit trail
+**x402 Payment Integration** (November 2025):
+- **X402PaymentService** (`server/services/x402-payment.ts`) handles payment splitting logic across multiple blockchains
+- Supports EVM chains (Base, Ethereum, Polygon, BNB) and Solana for USDC payments
+- Platform fee: 0.05 USDC deducted from every locked content transaction
+- Platform wallet: `0x47aB5ba5f987A8f75f8Ef2F0D8FF33De1A04a020` (testnet and mainnet)
+- Payment flow: Platform fee (0.05 USDC) → Creator payment → Investor revenue shares (if applicable)
+- **Current Implementation**: Logs intended payment splits to console, does NOT execute actual on-chain transfers
+- **Security**: No server-side private keys stored - client signs all transactions via MetaMask
+- **Production Roadmap**: See `PAYMENT_IMPLEMENTATION.md` for deployment options (smart contract splitter recommended)
+- Network configuration in `server/config/networks.ts` auto-switches based on NODE_ENV
+- Payment records stored in `payments` and `platformFees` tables with transaction hash for audit trail
+- Investor earnings tracked in `investors.totalEarnings` column when revenue share applies
 
 **Viral Detection System**: Cron job runs every 5 minutes checking posts for viral thresholds (configurable: 10k views OR 500 upvotes in 24 hours). When threshold met, marks post as viral in database and broadcasts WebSocket notification to all connected clients.
 
