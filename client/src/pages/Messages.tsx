@@ -15,6 +15,13 @@ import { Navbar } from '@/components/Navbar';
 import { useWebSocket } from '@/lib/useWebSocket';
 import { apiRequest } from '@/lib/queryClient';
 
+interface Conversation {
+  user: UserType;
+  lastMessage: string;
+  lastMessageAt: string;
+  hasUnread: boolean;
+}
+
 export default function Messages() {
   const { address } = useWallet();
   const [location, setLocation] = useLocation();
@@ -41,29 +48,19 @@ export default function Messages() {
   });
 
   // -----------------------------
-  // 2. Payment Relationships
+  // 2. Conversations (actual DM threads with messages)
   // -----------------------------
-  const { data: paymentRelationships } = useQuery<{ patrons: UserType[]; creatorsPaid: UserType[] }>({
-    queryKey: ['payment-relationships', currentUser?.id],
-    enabled: !!currentUser?.id && !!address,
+  const { data: conversations = [] } = useQuery<Conversation[]>({
+    queryKey: ['conversations', address],
+    enabled: !!address,
     queryFn: async () => {
-      const res = await fetch('/api/users/payment-relationships', {
+      const res = await fetch('/api/messages/conversations', {
         headers: { 'x-wallet-address': address || '' },
       });
-      if (!res.ok) return { patrons: [], creatorsPaid: [] };
+      if (!res.ok) throw new Error('Failed to fetch conversations');
       return res.json();
     },
   });
-
-  // Combine patrons + creators (unique)
-  const paidUsers = React.useMemo(() => {
-    if (!paymentRelationships) return [];
-    const combined = [...paymentRelationships.patrons, ...paymentRelationships.creatorsPaid];
-    const uniqueUsers = combined.filter((user, index, self) =>
-      index === self.findIndex((u) => u.id === user.id)
-    );
-    return uniqueUsers;
-  }, [paymentRelationships]);
 
   // -----------------------------
   // 3. Messages
@@ -100,14 +97,14 @@ export default function Messages() {
   // 5. Auto-select user if opened via ?user=<id>
   // -----------------------------
   useEffect(() => {
-    if (userIdFromQuery && paidUsers.length > 0 && !selectedUser) {
-      const userToSelect = paidUsers.find((u) => u.id === userIdFromQuery);
-      if (userToSelect) {
-        setSelectedUser(userToSelect);
+    if (userIdFromQuery && conversations.length > 0 && !selectedUser) {
+      const conversation = conversations.find((conv) => conv.user.id === userIdFromQuery);
+      if (conversation) {
+        setSelectedUser(conversation.user);
         setLocation('/messages');
       }
     }
-  }, [userIdFromQuery, paidUsers, selectedUser, setLocation]);
+  }, [userIdFromQuery, conversations, selectedUser, setLocation]);
 
   // -----------------------------
   // 6. Auto-scroll
@@ -132,7 +129,7 @@ export default function Messages() {
     onSuccess: () => {
       setInput('');
       queryClient.invalidateQueries({ queryKey: ['messages', selectedUser?.id] });
-      queryClient.invalidateQueries({ queryKey: ['payment-relationships', currentUser?.id] });
+      queryClient.invalidateQueries({ queryKey: ['conversations', address] });
     },
     onError: (err: any) => {
       alert(`Send failed: ${err.message}`);
@@ -187,33 +184,42 @@ export default function Messages() {
               <h2 className="font-semibold text-lg">Messages</h2>
             </div>
             <ScrollArea className="flex-1">
-              {paidUsers.length === 0 ? (
+              {conversations.length === 0 ? (
                 <div className="p-4 sm:p-6 text-center">
-                  <User className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm text-muted-foreground font-medium">No chats available</p>
+                  <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm text-muted-foreground font-medium">No conversations yet</p>
                   <p className="text-xs text-muted-foreground mt-2">
                     Unlock content to start chatting with creators
                   </p>
                 </div>
               ) : (
-                paidUsers.map((user) => (
+                conversations.map((conversation) => (
                   <div
-                    key={user.id}
+                    key={conversation.user.id}
                     className={`p-3 sm:p-4 border-b cursor-pointer hover:bg-accent/50 active:bg-accent transition-colors ${
-                      selectedUser?.id === user.id ? 'bg-accent/70' : ''
+                      selectedUser?.id === conversation.user.id ? 'bg-accent/70' : ''
                     }`}
-                    onClick={() => setSelectedUser(user)}
+                    onClick={() => setSelectedUser(conversation.user)}
+                    data-testid={`conversation-${conversation.user.id}`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       <Avatar className="w-10 h-10 sm:w-12 sm:h-12 ring-2 ring-background">
-                        <AvatarImage src={user.profileImagePath || ''} alt={user.username} />
+                        <AvatarImage src={conversation.user.profileImagePath || ''} alt={conversation.user.username} />
                         <AvatarFallback>
                           <User className="w-5 h-5" />
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold truncate text-sm sm:text-base">@{user.username}</p>
-                        <p className="text-xs text-muted-foreground">Tap to chat</p>
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="font-semibold truncate text-sm sm:text-base">@{conversation.user.username}</p>
+                          {conversation.hasUnread && (
+                            <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0 ml-2" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">{conversation.lastMessage}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                          {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
+                        </p>
                       </div>
                     </div>
                   </div>
