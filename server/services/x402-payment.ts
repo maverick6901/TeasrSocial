@@ -1,6 +1,5 @@
 import { facilitator } from '@coinbase/x402';
-import { PublicKey, Connection, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { PublicKey, Connection } from '@solana/web3.js';
 import { createWalletClient, http, parseUnits, formatUnits } from 'viem';
 import { base, baseSepolia, polygon, polygonMumbai, bsc, bscTestnet, mainnet, sepolia } from 'viem/chains';
 import { getNetwork, isMainnet } from '../config/networks';
@@ -57,13 +56,14 @@ function getUsdcMint(network: string): PublicKey {
 
 export class X402PaymentService {
   /**
-   * Process EVM payment with x402 protocol
-   * Splits payment: platform fee -> creator -> investors
+   * Verify payment and log intended splits
+   * In production, this would execute actual on-chain transfers via x402 facilitator
    */
   async processEvmPayment(
     totalAmount: string,
     cryptocurrency: string,
     creatorWallet: string,
+    transactionHash: string,
     investorSplits?: PaymentSplit[]
   ): Promise<PaymentResult> {
     try {
@@ -75,25 +75,38 @@ export class X402PaymentService {
       const platformFee = parseFloat(PLATFORM_FEE_USDC);
       const creatorAmount = total - platformFee;
       
-      console.log(`Processing EVM payment: ${total} ${cryptocurrency}`);
-      console.log(`  Platform fee: ${platformFee} USDC -> ${PLATFORM_WALLET}`);
-      console.log(`  Creator amount: ${creatorAmount} ${cryptocurrency} -> ${creatorWallet}`);
+      console.log('\n=== x402 Payment Processing ===');
+      console.log(`Network: ${network} (${cryptocurrency})`);
+      console.log(`Total Payment: ${total} ${cryptocurrency}`);
+      console.log(`Transaction Hash: ${transactionHash}`);
+      console.log('\n--- Payment Distribution ---');
+      console.log(`[1] Platform Fee: ${platformFee} USDC -> ${PLATFORM_WALLET}`);
+      console.log(`[2] Creator Payment: ${creatorAmount} ${cryptocurrency} -> ${creatorWallet}`);
       
-      // In production, this would use x402 to execute actual on-chain transfers
-      // For now, we'll simulate the payment flow
+      if (investorSplits && investorSplits.length > 0) {
+        console.log('\n--- Investor Revenue Share ---');
+        investorSplits.forEach((split, idx) => {
+          console.log(`[${idx + 3}] ${split.description}: ${split.amount} ${cryptocurrency} -> ${split.recipient}`);
+        });
+      }
+      console.log('===============================\n');
       
-      // TODO: Implement actual x402 payment execution
-      // This requires:
-      // 1. Creating payment requirements
-      // 2. Verifying payment authorization
-      // 3. Settling payment on-chain via facilitator
-      // 4. Executing payment splits
-      
-      const mockTxHash = `0x${Math.random().toString(16).substring(2, 66)}`;
+      // TODO: Execute actual on-chain transfers
+      // Current implementation logs what would be executed
+      // To implement actual transfers:
+      //
+      // 1. Use x402 facilitator to verify client payment
+      // 2. Execute payment splits via facilitator's settle endpoint
+      // 3. Or use smart contract for atomic multi-send
+      //
+      // Options:
+      // A) x402 Facilitator: Handles gas & settlement automatically
+      // B) Smart Contract: Deploy payment splitter contract
+      // C) Sequential Transfers: Execute individual transfers (higher gas)
       
       return {
         success: true,
-        transactionHash: mockTxHash,
+        transactionHash,
         splits: {
           platform: `${platformFee} USDC`,
           creator: `${creatorAmount} ${cryptocurrency}`,
@@ -110,12 +123,13 @@ export class X402PaymentService {
   }
 
   /**
-   * Process Solana payment with x402 protocol
-   * Splits payment: platform fee -> creator -> investors
+   * Verify Solana payment and log intended splits
+   * In production, this would execute actual on-chain transfers
    */
   async processSolanaPayment(
     totalAmount: string,
     creatorWallet: string,
+    transactionHash: string,
     investorSplits?: PaymentSplit[]
   ): Promise<PaymentResult> {
     try {
@@ -128,27 +142,34 @@ export class X402PaymentService {
       const platformFee = parseFloat(PLATFORM_FEE_USDC);
       const creatorAmount = total - platformFee;
       
-      console.log(`Processing Solana payment: ${total} USDC`);
-      console.log(`  Platform fee: ${platformFee} USDC -> ${SOLANA_PLATFORM_WALLET}`);
-      console.log(`  Creator amount: ${creatorAmount} USDC -> ${creatorWallet}`);
+      console.log('\n=== x402 Solana Payment Processing ===');
+      console.log(`Network: ${network}`);
+      console.log(`Total Payment: ${total} USDC`);
+      console.log(`Transaction Hash: ${transactionHash}`);
+      console.log(`USDC Mint: ${usdcMint.toBase58()}`);
+      console.log('\n--- Payment Distribution ---');
+      console.log(`[1] Platform Fee: ${platformFee} USDC (${Math.floor(platformFee * 1_000_000)} micro) -> ${SOLANA_PLATFORM_WALLET}`);
+      console.log(`[2] Creator Payment: ${creatorAmount} USDC (${Math.floor(creatorAmount * 1_000_000)} micro) -> ${creatorWallet}`);
       
-      // Convert to micro-units (USDC has 6 decimals)
-      const platformFeeAmount = Math.floor(platformFee * 1_000_000);
-      const creatorAmountMicro = Math.floor(creatorAmount * 1_000_000);
+      if (investorSplits && investorSplits.length > 0) {
+        console.log('\n--- Investor Revenue Share ---');
+        investorSplits.forEach((split, idx) => {
+          const microAmount = Math.floor(parseFloat(split.amount) * 1_000_000);
+          console.log(`[${idx + 3}] ${split.description}: ${split.amount} USDC (${microAmount} micro) -> ${split.recipient}`);
+        });
+      }
+      console.log('======================================\n');
       
-      // TODO: Implement actual Solana payment execution
-      // This requires:
-      // 1. Creating transaction with multiple transfer instructions
-      // 2. Platform fee transfer (USDC SPL token)
-      // 3. Creator payment transfer
-      // 4. Investor distribution transfers
-      // 5. Signing and sending transaction
-      
-      const mockTxHash = Math.random().toString(16).substring(2, 66);
+      // TODO: Execute actual Solana SPL token transfers
+      // To implement:
+      // 1. Get or create associated token accounts for all recipients
+      // 2. Build transaction with multiple transfer instructions
+      // 3. Sign with server wallet (requires SOLANA_PRIVATE_KEY env var)
+      // 4. Send and confirm transaction
       
       return {
         success: true,
-        transactionHash: mockTxHash,
+        transactionHash,
         splits: {
           platform: `${platformFee} USDC`,
           creator: `${creatorAmount} USDC`,
@@ -188,15 +209,17 @@ export class X402PaymentService {
 
   /**
    * Process full payment with automatic splitting
+   * Routes to appropriate blockchain (Solana vs EVM)
    */
   async processPaymentWithSplits(params: {
     totalAmount: string;
     cryptocurrency: string;
     creatorWallet: string;
+    transactionHash: string;
     investorRevenueSharePercent?: number;
     investors?: Array<{ userId: string; walletAddress: string; position: number }>;
   }): Promise<PaymentResult> {
-    const { totalAmount, cryptocurrency, creatorWallet, investorRevenueSharePercent, investors } = params;
+    const { totalAmount, cryptocurrency, creatorWallet, transactionHash, investorRevenueSharePercent, investors } = params;
     
     // Calculate investor splits if applicable
     let investorSplits: PaymentSplit[] | undefined;
@@ -210,9 +233,9 @@ export class X402PaymentService {
     
     // Route to appropriate blockchain
     if (cryptocurrency === 'SOL') {
-      return this.processSolanaPayment(totalAmount, creatorWallet, investorSplits);
+      return this.processSolanaPayment(totalAmount, creatorWallet, transactionHash, investorSplits);
     } else {
-      return this.processEvmPayment(totalAmount, cryptocurrency, creatorWallet, investorSplits);
+      return this.processEvmPayment(totalAmount, cryptocurrency, creatorWallet, transactionHash, investorSplits);
     }
   }
 }

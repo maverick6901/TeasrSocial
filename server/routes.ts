@@ -25,6 +25,7 @@ import { convertFromUSD, formatPrice, getAllPrices } from "./services/priceConve
 import { db } from './db';
 import { users, posts, payments, comments, votes, investors, platformFees, commentLikes } from '@shared/schema';
 import { eq, desc, and, sql, count } from 'drizzle-orm';
+import { x402PaymentService } from './services/x402-payment';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -728,7 +729,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Platform fee recorded: $${PLATFORM_FEE_USDC} for payment ${paymentRecord.id}`);
       }
 
-      // Handle investor position and earnings
+      // Get creator wallet address and existing investors for x402 payment processing
+      const creator = await db.select()
+        .from(users)
+        .where(eq(users.id, post.creatorId))
+        .limit(1)
+        .then(res => res[0]);
+
       const existingInvestors = await db.select()
         .from(investors)
         .where(eq(investors.postId, post.id))
@@ -775,6 +782,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           Total to Investors: $${totalInvestorShare.toFixed(6)}
           Per Investor (${existingInvestors.length} investors): $${earningsPerInvestor.toFixed(6)}`);
         
+        // Update investor earnings in database
         for (const investor of existingInvestors) {
           const currentEarnings = parseFloat(investor.totalEarnings || '0');
           const newEarnings = (currentEarnings + earningsPerInvestor).toFixed(6);
@@ -783,6 +791,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(eq(investors.id, investor.id));
           
           console.log(`Investor ${investor.userId} (position ${investor.position}): $${investor.totalEarnings} -> $${newEarnings}`);
+        }
+
+        // Get investor wallet addresses for x402 payment processing
+        const investorUserIds = existingInvestors.map(inv => inv.userId);
+        const investorUsers = investorUserIds.length > 0 
+          ? await db.select()
+              .from(users)
+              .where(sql`${users.id} = ANY(${investorUserIds})`)
+          : [];
+        
+        const investorsWithWallets = existingInvestors.map(inv => {
+          const investorUser = investorUsers.find(u => u.id === inv.userId);
+          return {
+            userId: inv.userId,
+            walletAddress: investorUser?.walletAddress || '',
+            position: inv.position
+          };
+        });
+
+        // Process payment split with x402 service (logs intended on-chain transfers)
+        if (creator) {
+          await x402PaymentService.processPaymentWithSplits({
+            totalAmount: amount.toString(),
+            cryptocurrency: cryptocurrency || 'USDC',
+            creatorWallet: creator.walletAddress,
+            transactionHash: transactionHash || `mock_tx_${cryptocurrency}_${Date.now()}`,
+            investorRevenueSharePercent: parseFloat(post.investorRevenueShare || '0'),
+            investors: investorsWithWallets.filter(inv => inv.walletAddress)
+          });
+        }
+      } else {
+        // Regular payment (no investor distribution)
+        // Process payment split with x402 service (logs intended on-chain transfers)
+        if (creator && !post.isFree) {
+          await x402PaymentService.processPaymentWithSplits({
+            totalAmount: amount.toString(),
+            cryptocurrency: cryptocurrency || 'USDC',
+            creatorWallet: creator.walletAddress,
+            transactionHash: transactionHash || `mock_tx_${cryptocurrency}_${Date.now()}`
+          });
         }
       }
 
