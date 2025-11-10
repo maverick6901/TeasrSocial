@@ -2,14 +2,20 @@ import fs from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
 import crypto from 'crypto';
+import { saveToObjectStorage, getFromObjectStorage, existsInObjectStorage } from './objectStorage';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
-const THUMBNAILS_DIR = path.join(UPLOAD_DIR, 'thumbnails');
+const THUMBNAIL_DIR = path.join(UPLOAD_DIR, 'thumbnails');
+
+// Use Object Storage for production, local filesystem for development
+const USE_OBJECT_STORAGE = process.env.NODE_ENV === 'production' || process.env.USE_OBJECT_STORAGE === 'true';
 
 // Ensure directories exist
 async function ensureDirs() {
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  await fs.mkdir(THUMBNAILS_DIR, { recursive: true });
+  if (!USE_OBJECT_STORAGE) {
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    await fs.mkdir(THUMBNAIL_DIR, { recursive: true });
+  }
 }
 
 ensureDirs();
@@ -23,12 +29,16 @@ export interface FileMetadata {
 /**
  * Save encrypted file to disk
  */
-export async function saveEncryptedFile(encryptedBuffer: Buffer, fileExtension: string): Promise<string> {
-  const filename = `${crypto.randomUUID()}.${fileExtension}.enc`;
-  const filepath = path.join(UPLOAD_DIR, filename);
-  
-  await fs.writeFile(filepath, encryptedBuffer);
-  
+export async function saveEncryptedFile(encryptedBuffer: Buffer, extension: string): Promise<string> {
+  const filename = `${crypto.randomUUID()}.${extension}.enc`;
+
+  if (USE_OBJECT_STORAGE) {
+    await saveToObjectStorage(`uploads/${filename}`, encryptedBuffer);
+  } else {
+    const filepath = path.join(UPLOAD_DIR, filename);
+    await fs.writeFile(filepath, encryptedBuffer);
+  }
+
   return filename;
 }
 
@@ -36,8 +46,12 @@ export async function saveEncryptedFile(encryptedBuffer: Buffer, fileExtension: 
  * Read encrypted file from disk
  */
 export async function readEncryptedFile(filename: string): Promise<Buffer> {
-  const filepath = path.join(UPLOAD_DIR, filename);
-  return fs.readFile(filepath);
+  if (USE_OBJECT_STORAGE) {
+    return await getFromObjectStorage(`uploads/${filename}`);
+  } else {
+    const filepath = path.join(UPLOAD_DIR, filename);
+    return await fs.readFile(filepath);
+  }
 }
 
 /**
@@ -45,14 +59,20 @@ export async function readEncryptedFile(filename: string): Promise<Buffer> {
  */
 export async function generateBlurredThumbnail(imageBuffer: Buffer): Promise<string> {
   const filename = `thumb_${crypto.randomUUID()}.jpg`;
-  const filepath = path.join(THUMBNAILS_DIR, filename);
-  
-  await sharp(imageBuffer)
-    .resize(800, 800, { fit: 'cover' })
-    .blur(40) // Heavy blur for pay-to-reveal effect
+
+  const blurredBuffer = await sharp(imageBuffer)
+    .resize(500)
+    .blur(20)
     .jpeg({ quality: 70 })
-    .toFile(filepath);
-  
+    .toBuffer();
+
+  if (USE_OBJECT_STORAGE) {
+    await saveToObjectStorage(`uploads/thumbnails/${filename}`, blurredBuffer);
+  } else {
+    const filepath = path.join(THUMBNAIL_DIR, filename);
+    await fs.writeFile(filepath, blurredBuffer);
+  }
+
   return `thumbnails/${filename}`;
 }
 
@@ -69,6 +89,6 @@ export function getFileExtension(mimeType: string): string {
     'video/mp4': 'mp4',
     'video/webm': 'webm',
   };
-  
+
   return mimeMap[mimeType] || 'bin';
 }

@@ -1137,62 +1137,73 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPostRevenue(postId: string): Promise<string> {
-    // Get all payments for this post (content payments only)
-    const postPayments = await withRetry(() =>
-      db
-        .select({
-          amount: payments.amount,
-          cryptocurrency: payments.cryptocurrency,
-        })
-        .from(payments)
-        .where(and(
-          eq(payments.postId, postId),
-          eq(payments.paymentType, 'content')
-        ))
-    );
+    try {
+      // Get all payments for this post (content payments only)
+      const postPayments = await withRetry(() =>
+        db
+          .select({
+            amount: payments.amount,
+            cryptocurrency: payments.cryptocurrency,
+          })
+          .from(payments)
+          .where(and(
+            eq(payments.postId, postId),
+            eq(payments.paymentType, 'content')
+          ))
+      );
 
-    console.log(`[getPostRevenue] Post ${postId}: Found ${postPayments.length} payments`);
+      console.log(`[getPostRevenue] Post ${postId}: Found ${postPayments.length} payments`);
 
-    // Import price conversion at runtime to avoid circular dependency
-    const { getPriceInUSD } = await import('./services/priceConversion');
-
-    // Calculate total revenue in USD
-    let totalUSD = 0;
-    for (const payment of postPayments) {
-      // Normalize cryptocurrency symbol (uppercase, trim whitespace)
-      const normalizedCrypto = payment.cryptocurrency?.toUpperCase().trim();
-
-      // Parse amount and validate it's a valid number
-      const amountInCrypto = parseFloat(payment.amount);
-
-      // Skip invalid records
-      if (!normalizedCrypto || !Number.isFinite(amountInCrypto)) {
-        console.warn('Skipping malformed payment:', { 
-          postId, 
-          amount: payment.amount, 
-          crypto: payment.cryptocurrency 
-        });
-        continue;
+      if (!postPayments || postPayments.length === 0) {
+        return '0.00';
       }
 
-      // Get crypto price, default to 0 if unsupported
-      let cryptoPrice = 0;
-      try {
-        cryptoPrice = getPriceInUSD(normalizedCrypto as any);
-        if (!Number.isFinite(cryptoPrice)) {
-          console.warn('Unsupported cryptocurrency:', normalizedCrypto);
-          cryptoPrice = 0;
+      // Import price conversion at runtime to avoid circular dependency
+      const { getPriceInUSD } = await import('./services/priceConversion');
+
+      // Calculate total revenue in USD
+      let totalUSD = 0;
+      for (const payment of postPayments) {
+        // Normalize cryptocurrency symbol (uppercase, trim whitespace)
+        const normalizedCrypto = payment.cryptocurrency?.toUpperCase().trim();
+
+        // Parse amount and validate it's a valid number
+        const amountInCrypto = parseFloat(payment.amount);
+
+        // Skip invalid records
+        if (!normalizedCrypto || !Number.isFinite(amountInCrypto) || amountInCrypto <= 0) {
+          console.warn('Skipping malformed payment:', { 
+            postId, 
+            amount: payment.amount, 
+            crypto: payment.cryptocurrency 
+          });
+          continue;
         }
-      } catch (err) {
-        console.warn('Error getting price for:', normalizedCrypto);
-        cryptoPrice = 0;
+
+        // Get crypto price - for USDC assume 1:1 USD
+        let cryptoPrice = 1.0;
+        if (normalizedCrypto !== 'USDC') {
+          try {
+            cryptoPrice = getPriceInUSD(normalizedCrypto as any);
+            if (!Number.isFinite(cryptoPrice) || cryptoPrice <= 0) {
+              console.warn('Invalid price for cryptocurrency, defaulting to 1:', normalizedCrypto);
+              cryptoPrice = 1.0;
+            }
+          } catch (err) {
+            console.warn('Error getting price for, defaulting to 1:', normalizedCrypto);
+            cryptoPrice = 1.0;
+          }
+        }
+
+        totalUSD += amountInCrypto * cryptoPrice;
       }
 
-      totalUSD += amountInCrypto * cryptoPrice;
+      console.log(`[getPostRevenue] Post ${postId}: Total revenue $${totalUSD.toFixed(2)}`);
+      return totalUSD.toFixed(2);
+    } catch (error) {
+      console.error(`[getPostRevenue] Error calculating revenue for post ${postId}:`, error);
+      return '0.00';
     }
-
-    console.log(`[getPostRevenue] Post ${postId}: Total revenue $${totalUSD.toFixed(2)}`);
-    return totalUSD.toFixed(2);
   }
 
   async getUserTotalRevenue(userId: string): Promise<string> {

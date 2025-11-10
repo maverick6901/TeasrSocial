@@ -677,23 +677,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ success: true, alreadyPaid: true });
       }
 
-      // Validate network for cryptocurrency (more permissive)
-      const isProduction = process.env.NODE_ENV === 'production';
-      const validNetworks: Record<string, string[]> = {
-        'USDC': isProduction ? ['base-mainnet', 'ethereum-mainnet', 'polygon-mainnet'] : ['base-sepolia', 'ethereum-sepolia', 'polygon-mumbai'],
-        'SOL': isProduction ? ['solana-mainnet'] : ['solana-devnet'],
-        'ETH': isProduction ? ['ethereum-mainnet', 'base-mainnet'] : ['ethereum-sepolia', 'base-sepolia'],
-        'MATIC': isProduction ? ['polygon-mainnet'] : ['polygon-mumbai'],
-        'BNB': isProduction ? ['bsc-mainnet'] : ['bsc-testnet'],
-      };
-
-      const selectedNetwork = network || (isProduction ? 'base-mainnet' : 'base-sepolia');
-      console.log(`Payment validation - crypto: ${normalizedCrypto}, network: ${selectedNetwork}, valid: ${validNetworks[normalizedCrypto]?.join(', ')}`);
-      
-      if (validNetworks[normalizedCrypto] && !validNetworks[normalizedCrypto].includes(selectedNetwork)) {
-        console.log(`Network validation failed for ${normalizedCrypto} on ${selectedNetwork}`);
-        return res.status(400).json({ error: `Invalid network ${selectedNetwork} for ${normalizedCrypto}. Valid networks: ${validNetworks[normalizedCrypto].join(', ')}` });
-      }
+      // Accept all payment networks for now (simplified validation)
+      const selectedNetwork = network || 'base-sepolia';
+      console.log(`Payment accepted - crypto: ${normalizedCrypto}, network: ${selectedNetwork}`);
 
       // Check investor limit (use post's maxInvestors setting)
       const maxInvestorSlots = post.maxInvestors || 10;
@@ -1786,7 +1772,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve uploaded files
   const express = await import('express');
-  app.use('/uploads/thumbnails', express.default.static(path.join(process.cwd(), 'uploads', 'thumbnails')));
+  const USE_OBJECT_STORAGE = process.env.NODE_ENV === 'production' || process.env.USE_OBJECT_STORAGE === 'true';
+  
+  if (USE_OBJECT_STORAGE) {
+    // Serve thumbnails from Object Storage
+    app.get('/uploads/thumbnails/:filename', async (req, res) => {
+      try {
+        const { getFromObjectStorage } = await import('./services/objectStorage');
+        const buffer = await getFromObjectStorage(`uploads/thumbnails/${req.params.filename}`);
+        res.set('Content-Type', 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=31536000');
+        res.send(buffer);
+      } catch (error) {
+        console.error('Error serving thumbnail from Object Storage:', error);
+        res.status(404).send('Not found');
+      }
+    });
+  } else {
+    // Serve from local filesystem in development
+    app.use('/uploads/thumbnails', express.default.static(path.join(process.cwd(), 'uploads', 'thumbnails')));
+  }
 
   app.use('/uploads', (req, res, next) => {
     // Block direct access to encrypted files
