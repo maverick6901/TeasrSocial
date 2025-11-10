@@ -17,6 +17,7 @@ import {
   getFileExtension
 } from "./services/fileStorage";
 import fs from 'fs/promises';
+import * as fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { generateAccessToken, verifyAccessToken } from "./services/jwt";
@@ -1815,7 +1816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const filename = req.params.filename;
         const filepath = path.join(process.cwd(), 'uploads/thumbnails', filename);
 
-        if (!fs.existsSync(filepath)) {
+        if (!fsSync.existsSync(filepath)) {
           console.error(`Profile image not found: ${filename}`);
           return res.status(404).json({ error: 'Image not found' });
         }
@@ -1847,7 +1848,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Fallback to local filesystem (development)
         const filepath = path.join(process.cwd(), 'uploads', filename);
 
-        if (!fs.existsSync(filepath)) {
+        if (!fsSync.existsSync(filepath)) {
           console.error(`Thumbnail not found: ${filename}`);
           return res.status(404).json({ error: 'Thumbnail not found' });
         }

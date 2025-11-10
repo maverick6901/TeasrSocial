@@ -1,0 +1,93 @@
+[MEDIA] Decryption error: Error: Unsupported state or unable to authenticate data
+2025-11-10 14:40:32.63
+86ea669d
+User
+at Decipheriv.final (node:internal/crypto/cipher:193:29)
+2025-11-10 14:40:32.63
+86ea669d
+User
+at decryptBuffer (file:///home/runner/workspace/dist/index.js:1569:14)
+2025-11-10 14:40:32.63
+86ea669d
+User
+at decryptContentKey (file:///home/runner/workspace/dist/index.js:1584:10)
+2025-11-10 14:40:32.63
+86ea669d
+User
+at file:///home/runner/workspace/dist/index.js:2260:28
+2025-11-10 14:40:32.63
+86ea669d
+User
+7:40:32 PM [express] GET /api/posts/86fef9d4-979b-4283-9480-663aa62d3bb7/media 302 in 135ms
+2025-11-10 14:40:32.68
+86ea669d
+User
+WebSocket client connected
+2025-11-10 14:40:32.70
+86ea669d
+User
+[ObjectStorage] Retrieving key: uploads/thumb_b634df8c-0cde-4f86-b10e-806e9bdc8f54.jpg
+2025-11-10 14:40:32.70
+86ea669d
+User
+[ObjectStorage] Error getting: TypeError: fetch failed
+2025-11-10 14:40:32.70
+86ea669d
+User
+at node:internal/deps/undici/undici:13510:13
+2025-11-10 14:40:32.70
+86ea669d
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-11-10 14:40:32.70
+86ea669d
+User
+at async getFromObjectStorage (file:///home/runner/workspace/dist/index.js:103:22)
+2025-11-10 14:40:32.70
+86ea669d
+User
+at async file:///home/runner/workspace/dist/index.js:3187:24 {
+2025-11-10 14:40:32.70
+86ea669d
+User
+[cause]: Error: getaddrinfo ENOTFOUND object-storage.replit.com
+2025-11-10 14:40:32.70
+86ea669d
+User
+at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:120:26) {
+2025-11-10 14:40:32.70
+86ea669d
+User
+errno: -3008,
+2025-11-10 14:40:32.70
+86ea669d
+User
+code: 'ENOTFOUND',
+2025-11-10 14:40:32.70
+86ea669d
+User
+syscall: 'getaddrinfo',
+2025-11-10 14:40:32.70
+86ea669d
+User
+hostname: 'object-storage.replit.com'
+2025-11-10 14:40:32.70
+86ea669d
+User
+}
+2025-11-10 14:40:32.70
+86ea669d
+User
+at file:///home/runner/workspace/dist/index.js:3194:18
+2025-11-10 14:40:32.70
+86ea669d
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-11-10 14:41:41.16
+0b22f4e4
+User
+WebSocket client disconnected
+2025-11-10 14:41:43.15
+86ea669d
+User
+WebSocket client connected
