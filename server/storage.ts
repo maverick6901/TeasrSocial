@@ -1125,6 +1125,8 @@ export class DatabaseStorage implements IStorage {
 
   async getPostRevenue(postId: string): Promise<string> {
     try {
+      const PLATFORM_FEE_USDC = 0.05;
+
       // Get all payments for this post (content payments only)
       const postPayments = await withRetry(() =>
         db
@@ -1148,17 +1150,17 @@ export class DatabaseStorage implements IStorage {
       // Import price conversion at runtime to avoid circular dependency
       const { getPriceInUSD } = await import('./services/priceConversion');
 
-      // Calculate total revenue in USD
+      // Calculate total revenue in USD (after platform fees)
       let totalUSD = 0;
       for (const payment of postPayments) {
         // Normalize cryptocurrency symbol (uppercase, trim whitespace)
-        const normalizedCrypto = payment.cryptocurrency?.toUpperCase().trim();
+        const normalizedCrypto = (payment.cryptocurrency || 'USDC').toUpperCase().trim();
 
         // Parse amount and validate it's a valid number
         const amountInCrypto = parseFloat(payment.amount);
 
         // Skip invalid records
-        if (!normalizedCrypto || !Number.isFinite(amountInCrypto) || amountInCrypto <= 0) {
+        if (!Number.isFinite(amountInCrypto) || amountInCrypto <= 0) {
           console.warn('Skipping malformed payment:', { 
             postId, 
             amount: payment.amount, 
@@ -1167,22 +1169,28 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
-        // Get crypto price - for USDC assume 1:1 USD
+        // Get crypto price in USD
         let cryptoPrice = 1.0;
         if (normalizedCrypto !== 'USDC') {
           try {
             cryptoPrice = getPriceInUSD(normalizedCrypto as any);
             if (!Number.isFinite(cryptoPrice) || cryptoPrice <= 0) {
-              console.warn('Invalid price for cryptocurrency, defaulting to 1:', normalizedCrypto);
+              console.warn(`[getPostRevenue] Invalid price for ${normalizedCrypto}, defaulting to 1`);
               cryptoPrice = 1.0;
             }
           } catch (err) {
-            console.warn('Error getting price for, defaulting to 1:', normalizedCrypto);
+            console.warn(`[getPostRevenue] Error getting price for ${normalizedCrypto}, defaulting to 1`);
             cryptoPrice = 1.0;
           }
         }
 
-        totalUSD += amountInCrypto * cryptoPrice;
+        // Convert to USD and subtract platform fee
+        const amountInUSD = amountInCrypto * cryptoPrice;
+        const afterFee = Math.max(0, amountInUSD - PLATFORM_FEE_USDC);
+
+        console.log(`[getPostRevenue] Payment: ${amountInCrypto} ${normalizedCrypto} @ $${cryptoPrice} = $${amountInUSD.toFixed(2)} USD, after fee: $${afterFee.toFixed(2)}`);
+
+        totalUSD += afterFee;
       }
 
       console.log(`[getPostRevenue] Post ${postId}: Total revenue $${totalUSD.toFixed(2)}`);
@@ -1194,60 +1202,78 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserTotalRevenue(userId: string): Promise<string> {
-    const PLATFORM_FEE_USDC = 0.05;
+    try {
+      const PLATFORM_FEE_USDC = 0.05;
 
-    // Get all payments for this user's posts (content unlocks only)
-    const userPayments = await db
-      .select({ 
-        amount: payments.amount,
-        postId: payments.postId,
-        paymentType: payments.paymentType,
-        cryptocurrency: payments.cryptocurrency
-      })
-      .from(payments)
-      .innerJoin(posts, eq(posts.id, payments.postId))
-      .where(and(
-        eq(posts.creatorId, userId),
-        eq(payments.paymentType, 'content')
-      ));
+      // Get all payments for this user's posts (content unlocks only)
+      const userPayments = await withRetry(() =>
+        db
+          .select({ 
+            amount: payments.amount,
+            postId: payments.postId,
+            paymentType: payments.paymentType,
+            cryptocurrency: payments.cryptocurrency
+          })
+          .from(payments)
+          .innerJoin(posts, eq(posts.id, payments.postId))
+          .where(and(
+            eq(posts.creatorId, userId),
+            eq(payments.paymentType, 'content')
+          ))
+      );
 
-    let totalRevenue = 0;
-    // Import price conversion at runtime to avoid circular dependency
-    const { getPriceInUSD } = await import('./services/priceConversion');
+      console.log(`[getUserTotalRevenue] User ${userId}: Found ${userPayments.length} payments`);
 
-    // Process each payment
-    for (const payment of userPayments) {
-      const amount = parseFloat(payment.amount);
-      if (!isFinite(amount)) continue;
-
-      const normalizedCrypto = (payment.cryptocurrency || 'USDC').toUpperCase().trim();
-
-      // Get crypto price - for USDC assume 1:1 USD
-      let cryptoPrice = 1.0;
-      if (normalizedCrypto !== 'USDC') {
-        try {
-          cryptoPrice = getPriceInUSD(normalizedCrypto as any);
-          if (!Number.isFinite(cryptoPrice) || cryptoPrice <= 0) {
-            console.warn(`[getUserTotalRevenue] Invalid price for ${normalizedCrypto}, defaulting to 1`);
-            cryptoPrice = 1.0;
-          }
-        } catch (err) {
-          console.warn(`[getUserTotalRevenue] Error getting price for ${normalizedCrypto}, defaulting to 1`);
-          cryptoPrice = 1.0;
-        }
+      if (!userPayments || userPayments.length === 0) {
+        return '0.00';
       }
 
-      // Convert to USD and subtract platform fee
-      const amountInUSD = amount * cryptoPrice;
-      const afterFee = Math.max(0, amountInUSD - PLATFORM_FEE_USDC);
+      let totalRevenue = 0;
+      // Import price conversion at runtime to avoid circular dependency
+      const { getPriceInUSD } = await import('./services/priceConversion');
 
-      console.log(`[getUserTotalRevenue] Payment: ${amount} ${normalizedCrypto} = $${amountInUSD.toFixed(2)} USD, after fee: $${afterFee.toFixed(2)}`);
+      // Process each payment
+      for (const payment of userPayments) {
+        const amount = parseFloat(payment.amount);
+        
+        // Skip invalid amounts
+        if (!Number.isFinite(amount) || amount <= 0) {
+          console.warn(`[getUserTotalRevenue] Skipping invalid payment amount:`, payment.amount);
+          continue;
+        }
 
-      totalRevenue += afterFee;
+        const normalizedCrypto = (payment.cryptocurrency || 'USDC').toUpperCase().trim();
+
+        // Get crypto price in USD
+        let cryptoPrice = 1.0;
+        if (normalizedCrypto !== 'USDC') {
+          try {
+            cryptoPrice = getPriceInUSD(normalizedCrypto as any);
+            if (!Number.isFinite(cryptoPrice) || cryptoPrice <= 0) {
+              console.warn(`[getUserTotalRevenue] Invalid price for ${normalizedCrypto}, defaulting to 1`);
+              cryptoPrice = 1.0;
+            }
+          } catch (err) {
+            console.warn(`[getUserTotalRevenue] Error getting price for ${normalizedCrypto}, defaulting to 1`);
+            cryptoPrice = 1.0;
+          }
+        }
+
+        // Convert to USD and subtract platform fee
+        const amountInUSD = amount * cryptoPrice;
+        const afterFee = Math.max(0, amountInUSD - PLATFORM_FEE_USDC);
+
+        console.log(`[getUserTotalRevenue] Payment: ${amount} ${normalizedCrypto} @ $${cryptoPrice}/unit = $${amountInUSD.toFixed(2)} USD, after $${PLATFORM_FEE_USDC} fee: $${afterFee.toFixed(2)}`);
+
+        totalRevenue += afterFee;
+      }
+
+      console.log(`[getUserTotalRevenue] User ${userId} total revenue: $${totalRevenue.toFixed(2)}`);
+      return totalRevenue.toFixed(2);
+    } catch (error) {
+      console.error(`[getUserTotalRevenue] Error calculating revenue for user ${userId}:`, error);
+      return '0.00';
     }
-
-    console.log(`[getUserTotalRevenue] User ${userId} total revenue: $${totalRevenue.toFixed(2)}`);
-    return totalRevenue.toFixed(2);
   }
 
   // Investor Methods
