@@ -1658,7 +1658,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get user total revenue
   app.get('/api/users/:userId/revenue', async (req, res) => {
     try {
+      console.log(`Calculating revenue for user ${req.params.userId}`);
       const revenue = await storage.getUserTotalRevenue(req.params.userId);
+      console.log(`User ${req.params.userId} total revenue: $${revenue}`);
       res.json({ revenue });
     } catch (error: any) {
       console.error('Get user revenue error:', error);
