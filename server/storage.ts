@@ -45,7 +45,7 @@ import {
   type InsertPinnedPost,
 } from "@shared/schema";
 import { db, pool } from './db';
-import { eq, and, desc, sql, inArray, or } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, or, count } from 'drizzle-orm';
 import crypto from 'crypto'; // Import crypto for random bytes generation
 
 // Helper function to retry database operations
@@ -351,28 +351,37 @@ export class DatabaseStorage implements IStorage {
 
   // Payments
   async createPayment(insertPayment: InsertPayment): Promise<Payment> {
-    const [payment] = await withRetry(() =>
-      db
-        .insert(payments)
-        .values(insertPayment)
-        .returning()
-    );
+    try {
+      console.log(`[STORAGE] createPayment called with data:`, insertPayment);
 
-    // Automatically add the creator to the payer's paid user list in direct messages
-    // This assumes that a direct message conversation might be initiated or updated here.
-    // The actual logic for "paid user list" might be a separate concept or integrated into DM.
-    // For now, we'll ensure a message can be sent/retrieved between them.
-    const post = await this.getPost(insertPayment.postId);
-    if (post && post.creatorId !== insertPayment.userId) {
-      // Ensure there's a way to communicate or acknowledge this payment for DM context
-      // This could involve creating a dummy message or updating a status if a 'paid user list'
-      // is a distinct feature. For now, we'll ensure the user can be found.
-      await this.getUserById(post.creatorId); // Ensure creator exists
-      await this.getUserById(insertPayment.userId); // Ensure payer exists
+      const [payment] = await withRetry(() =>
+        db
+          .insert(payments)
+          .values(insertPayment)
+          .returning()
+      );
+
+      console.log(`[STORAGE SUCCESS] Payment inserted into database - id: ${payment.id}`);
+
+      // Automatically add the creator to the payer's paid user list in direct messages
+      // This assumes that a direct message conversation might be initiated or updated here.
+      // The actual logic for "paid user list" might be a separate concept or integrated into DM.
+      // For now, we'll ensure a message can be sent/retrieved between them.
+      const post = await this.getPost(insertPayment.postId);
+      if (post && post.creatorId !== insertPayment.userId) {
+        // Ensure there's a way to communicate or acknowledge this payment for DM context
+        // This could involve creating a dummy message or updating a status if a 'paid user list'
+        // is a distinct feature. For now, we'll ensure the user can be found.
+        await this.getUserById(post.creatorId); // Ensure creator exists
+        await this.getUserById(insertPayment.userId); // Ensure payer exists
+      }
+
+      return payment;
+    } catch (error) {
+      console.error(`[STORAGE ERROR] Failed to create payment:`, error);
+      console.error(`[STORAGE ERROR] Payment data that failed:`, insertPayment);
+      throw error;
     }
-
-
-    return payment;
   }
 
   async hasUserPaid(userId: string, postId: string, paymentType: 'content' | 'comment'): Promise<boolean> {
@@ -402,7 +411,8 @@ export class DatabaseStorage implements IStorage {
 
   async hasUserPaidForAnyContent(payerId: string, creatorId: string): Promise<boolean> {
     const [payment] = await withRetry(() =>
-      db.select()
+      db
+        .select()
         .from(payments)
         .innerJoin(posts, eq(payments.postId, posts.id))
         .where(and(
@@ -1144,8 +1154,35 @@ export class DatabaseStorage implements IStorage {
     // Calculate total revenue in USD
     let totalUSD = 0;
     for (const payment of postPayments) {
+      // Normalize cryptocurrency symbol (uppercase, trim whitespace)
+      const normalizedCrypto = payment.cryptocurrency?.toUpperCase().trim();
+
+      // Parse amount and validate it's a valid number
       const amountInCrypto = parseFloat(payment.amount);
-      const cryptoPrice = getPriceInUSD(payment.cryptocurrency as any);
+
+      // Skip invalid records
+      if (!normalizedCrypto || !Number.isFinite(amountInCrypto)) {
+        console.warn('Skipping malformed payment:', { 
+          postId, 
+          amount: payment.amount, 
+          crypto: payment.cryptocurrency 
+        });
+        continue;
+      }
+
+      // Get crypto price, default to 0 if unsupported
+      let cryptoPrice = 0;
+      try {
+        cryptoPrice = getPriceInUSD(normalizedCrypto as any);
+        if (!Number.isFinite(cryptoPrice)) {
+          console.warn('Unsupported cryptocurrency:', normalizedCrypto);
+          cryptoPrice = 0;
+        }
+      } catch (err) {
+        console.warn('Error getting price for:', normalizedCrypto);
+        cryptoPrice = 0;
+      }
+
       totalUSD += amountInCrypto * cryptoPrice;
     }
 
@@ -1153,30 +1190,59 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserTotalRevenue(userId: string): Promise<string> {
-    // Get all payments for this user's content
-    const userPayments = await withRetry(() =>
-      db
-        .select({
-          amount: payments.amount,
-          cryptocurrency: payments.cryptocurrency,
-        })
-        .from(payments)
-        .innerJoin(posts, eq(payments.postId, posts.id))
-        .where(eq(posts.creatorId, userId))
-    );
+    const PLATFORM_FEE_USDC = 0.05;
 
-    // Import price conversion at runtime to avoid circular dependency
-    const { getPriceInUSD } = await import('./services/priceConversion');
+    // Get all payments for this user's posts (content unlocks only)
+    const userPayments = await db
+      .select({ 
+        amount: payments.amount,
+        postId: payments.postId,
+        paymentType: payments.paymentType
+      })
+      .from(payments)
+      .innerJoin(posts, eq(posts.id, payments.postId))
+      .where(and(
+        eq(posts.creatorId, userId),
+        eq(payments.paymentType, 'content')
+      ));
 
-    // Calculate total revenue in USD
-    let totalUSD = 0;
+    let totalRevenue = 0;
+
+    // Process each payment
     for (const payment of userPayments) {
-      const amountInCrypto = parseFloat(payment.amount);
-      const cryptoPrice = getPriceInUSD(payment.cryptocurrency as any);
-      totalUSD += amountInCrypto * cryptoPrice;
+      const paymentAmount = parseFloat(payment.amount);
+
+      // Get post details to check investor settings
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, payment.postId)
+      });
+
+      if (!post) continue;
+
+      // Get investor count for this post
+      const investorCount = await db.select({ count: count() })
+        .from(investors)
+        .where(eq(investors.postId, payment.postId))
+        .then(result => result[0]?.count ?? 0);
+
+      const maxInvestors = post.maxInvestors || 10;
+      const investorRevenueShare = parseFloat(post.investorRevenueShare || '0');
+
+      // Calculate revenue after platform fee
+      const afterPlatformFee = paymentAmount - PLATFORM_FEE_USDC;
+
+      // If investor spots are filled and there's a revenue share, deduct it
+      if (investorCount >= maxInvestors && investorRevenueShare > 0) {
+        const investorShare = afterPlatformFee * (investorRevenueShare / 100);
+        const creatorRevenue = afterPlatformFee - investorShare;
+        totalRevenue += creatorRevenue;
+      } else {
+        // No investor distribution, creator gets everything after platform fee
+        totalRevenue += afterPlatformFee;
+      }
     }
 
-    return totalUSD.toFixed(2);
+    return totalRevenue.toFixed(2);
   }
 
   // Investor Methods

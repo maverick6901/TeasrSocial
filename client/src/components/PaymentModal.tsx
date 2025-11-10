@@ -11,6 +11,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { ethers } from 'ethers';
+import bs58 from 'bs58';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -34,18 +35,19 @@ export function PaymentModal({ isOpen, onClose, post, onSuccess, paymentType = '
 
 
   // Fetch live crypto prices
-  const { data: prices } = useQuery({
+  const { data: prices } = useQuery<Record<string, number>>({
     queryKey: ['/api/prices'],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Calculate price in selected cryptocurrency
-  const getConvertedPrice = (usdPrice: string) => {
+  const getConvertedPrice = (usdPrice: string | null) => {
+    const price = usdPrice || '0';
     if (!prices || selectedCrypto === 'USDC') {
-      return parseFloat(usdPrice);
+      return parseFloat(price);
     }
 
-    const usdAmount = parseFloat(usdPrice);
+    const usdAmount = parseFloat(price);
     const cryptoPrice = prices[selectedCrypto as keyof typeof prices] || 1;
     return parseFloat((usdAmount / cryptoPrice).toFixed(6));
   };
@@ -98,25 +100,59 @@ export function PaymentModal({ isOpen, onClose, post, onSuccess, paymentType = '
       // Create payment transaction signature
       let transactionHash = '';
       
-      if (typeof window.ethereum !== 'undefined' && selectedCrypto !== 'SOL') {
-        // For EVM chains (ETH, MATIC, BNB, Base/USDC)
+      // Get payment amount
+      const usdPrice = isCommentUnlock 
+        ? (post.commentFee || '0')
+        : (isBuyout && post.buyoutPrice ? post.buyoutPrice : post.price);
+      const paymentAmount = selectedCrypto === 'USDC'
+        ? usdPrice
+        : (isBuyout && convertedBuyoutPrice ? convertedBuyoutPrice : convertedPrice).toString();
+      
+      if (selectedCrypto === 'SOL') {
+        // Solana payment with Phantom wallet
+        try {
+          const provider = (window as any).phantom?.solana;
+          
+          if (!provider?.isPhantom) {
+            throw new Error('Please install Phantom wallet to pay with SOL');
+          }
+          
+          // Ensure wallet is connected
+          if (!provider.isConnected) {
+            await provider.connect();
+          }
+          
+          // Create message to sign (testnet simulation)
+          const message = `Pay ${paymentAmount} SOL for post ${post.id} on ${network}\nTimestamp: ${Date.now()}`;
+          const encodedMessage = new TextEncoder().encode(message);
+          
+          // Sign message with Phantom
+          const signedMessage = await provider.signMessage(encodedMessage, 'utf8');
+          
+          // Encode signature as base58 for transmission
+          transactionHash = bs58.encode(signedMessage.signature);
+          
+          toast({
+            title: 'Transaction Signed',
+            description: `Payment of ${paymentAmount} SOL signed successfully`,
+          });
+        } catch (signError: any) {
+          console.error('Phantom signing error:', signError);
+          if (signError.message.includes('User rejected')) {
+            throw new Error('Payment cancelled. Please try again.');
+          }
+          throw new Error('Failed to sign with Phantom wallet. Please try again.');
+        }
+      } else if (typeof window.ethereum !== 'undefined') {
+        // EVM chains (ETH, MATIC, BNB, Base/USDC) with MetaMask/Coinbase Wallet
         try {
           const provider = new ethers.providers.Web3Provider(window.ethereum);
           const signer = provider.getSigner();
           
-          // Get payment amount in wei
-          const usdPrice = isCommentUnlock 
-            ? (post.commentFee || '0')
-            : (isBuyout && post.buyoutPrice ? post.buyoutPrice : post.price);
-          const paymentAmount = selectedCrypto === 'USDC'
-            ? usdPrice
-            : (isBuyout && convertedBuyoutPrice ? convertedBuyoutPrice : convertedPrice).toString();
-          
-          // For testnet, we'll create a simple signed message as proof of payment intent
-          const message = `Pay ${paymentAmount} ${selectedCrypto} for post ${post.id} on ${network}`;
+          // For testnet, sign a message as proof of payment intent
+          const message = `Pay ${paymentAmount} ${selectedCrypto} for post ${post.id} on ${network}\nTimestamp: ${Date.now()}`;
           const signature = await signer.signMessage(message);
           
-          // In production, this would be an actual on-chain transaction
           transactionHash = signature;
           
           toast({
@@ -124,25 +160,19 @@ export function PaymentModal({ isOpen, onClose, post, onSuccess, paymentType = '
             description: `Payment of ${paymentAmount} ${selectedCrypto} signed successfully`,
           });
         } catch (signError: any) {
-          console.error('Signing error:', signError);
+          console.error('EVM signing error:', signError);
+          if (signError.code === 4001 || signError.message.includes('User rejected')) {
+            throw new Error('Payment cancelled. Please try again.');
+          }
           throw new Error('Failed to sign transaction. Please try again.');
         }
       } else {
-        // For Solana or mock transaction
-        transactionHash = '0x' + Math.random().toString(16).substring(2, 66);
+        throw new Error(`Please install a compatible wallet (MetaMask for ${selectedCrypto}, Phantom for SOL)`);
       }
 
       await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Calculate payment amount in selected cryptocurrency
-      const shouldUseBuyoutForPayment = !isCommentUnlock && isBuyout && !isBuyoutFull && post.buyoutPrice;
-      const usdPrice = isCommentUnlock 
-        ? (post.commentFee || '0')
-        : (shouldUseBuyoutForPayment ? post.buyoutPrice : post.price);
-      const cryptoPrice = getConvertedPrice(usdPrice);
-      const paymentAmount = selectedCrypto === 'USDC' ? usdPrice : cryptoPrice.toString();
       
-      console.log('Payment details:', { usdPrice, cryptoPrice, paymentAmount, selectedCrypto, isBuyout, isBuyoutFull });
+      console.log('Payment details:', { usdPrice, paymentAmount, selectedCrypto, isBuyout, isBuyoutFull });
 
       // Use different endpoint for comment unlock
       const endpoint = isCommentUnlock 
@@ -200,11 +230,11 @@ export function PaymentModal({ isOpen, onClose, post, onSuccess, paymentType = '
           onClose();
         }, 1500);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Payment error:', error);
       toast({
         title: 'Payment failed',
-        description: 'Please try again',
+        description: error.message || 'Please try again',
         variant: 'destructive',
       });
     } finally {
@@ -414,14 +444,14 @@ export function PaymentModal({ isOpen, onClose, post, onSuccess, paymentType = '
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Investor Share ({investorRevenueShare}%)</span>
                     <span className="font-medium">
-                      ${((parseFloat(finalPrice) - PLATFORM_FEE_USDC) * investorRevenueShare / 100).toFixed(2)} USDC
+                      ${((parseFloat(finalPrice || '0') - PLATFORM_FEE_USDC) * investorRevenueShare / 100).toFixed(2)} USDC
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Creator Receives</span>
                   <span className="font-medium text-green-600 dark:text-green-400">
-                    ${((parseFloat(finalPrice) - PLATFORM_FEE_USDC) * (1 - investorRevenueShare / 100)).toFixed(2)} USDC
+                    ${((parseFloat(finalPrice || '0') - PLATFORM_FEE_USDC) * (1 - investorRevenueShare / 100)).toFixed(2)} USDC
                   </span>
                 </div>
               </div>

@@ -63,7 +63,15 @@ function RevenueDisplay({ userId, walletAddress }: { userId: string; walletAddre
     return () => clearInterval(interval);
   }, [userId, walletAddress]);
 
-  const totalRevenue = (parseFloat(revenue) + parseFloat(investorEarnings)).toFixed(2);
+  // Parse revenue values with safety checks to prevent NaN display
+  const revenueValue = parseFloat(revenue);
+  const investorValue = parseFloat(investorEarnings);
+  
+  // Default to 0 if values are not finite numbers
+  const safeRevenue = Number.isFinite(revenueValue) ? revenueValue : 0;
+  const safeInvestorEarnings = Number.isFinite(investorValue) ? investorValue : 0;
+  
+  const totalRevenue = (safeRevenue + safeInvestorEarnings).toFixed(2);
 
   return (
     <div className="text-center">
@@ -73,9 +81,9 @@ function RevenueDisplay({ userId, walletAddress }: { userId: string; walletAddre
       </div>
       <div className="text-xs sm:text-sm text-muted-foreground">
         Revenue (USD)
-        {parseFloat(investorEarnings) > 0 && (
+        {safeInvestorEarnings > 0 && (
           <div className="text-purple-600 font-medium mt-1">
-            +${investorEarnings} from investments
+            +${safeInvestorEarnings.toFixed(2)} from investments
           </div>
         )}
       </div>

@@ -638,11 +638,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Pay for post (x402 payment with multi-crypto support)
   app.post('/api/posts/:id/pay', async (req, res) => {
     try {
+      console.log(`[PAYMENT] Payment endpoint called - postId: ${req.params.id}`);
+      console.log(`[PAYMENT] Request body:`, JSON.stringify(req.body, null, 2));
+      
       const user = await getCurrentUser(req);
       if (!user) {
+        console.log(`[PAYMENT ERROR] Unauthorized - no user found`);
         return res.status(401).json({ error: 'Unauthorized - wallet not connected' });
       }
 
+      console.log(`[PAYMENT] User authenticated - userId: ${user.id}, username: ${user.username}`);
+      
       const { amount, transactionHash, cryptocurrency, network, isBuyout } = req.body;
       const post = await storage.getPost(req.params.id);
 
@@ -709,6 +715,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Calculated price: ${actualPrice} (isBuyout: ${isBuyout}, investorCount: ${investorCount}/${maxInvestorSlots})`);
 
       // Create payment record
+      console.log(`[PAYMENT] Creating payment record...`);
+      console.log(`[PAYMENT] Payment data:`, {
+        userId: user.id,
+        postId: post.id,
+        amount: amount.toString(),
+        cryptocurrency: cryptocurrency || 'USDC',
+        network: selectedNetwork,
+        isBuyout: isBuyout || false,
+        transactionHash: transactionHash || `mock_tx_${cryptocurrency}_${Date.now()}`,
+        paymentType: 'content'
+      });
+      
       const paymentRecord = await storage.createPayment({
         userId: user.id,
         postId: post.id,
@@ -719,6 +737,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         transactionHash: transactionHash || `mock_tx_${cryptocurrency}_${Date.now()}`,
         paymentType: 'content',
       });
+      
+      console.log(`[PAYMENT SUCCESS] Payment record created - paymentId: ${paymentRecord.id}`);
 
       // Platform fee configuration (0.05 USDC on all locked content)
       const PLATFORM_FEE_USDC = 0.05;
@@ -916,7 +936,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ success: true, alreadyPaid: false });
     } catch (error: any) {
-      console.error('Payment error:', error);
+      console.error('[PAYMENT ERROR] Payment processing failed:', error);
+      console.error('[PAYMENT ERROR] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        postId: req.params.id,
+        body: req.body
+      });
       res.status(500).json({ error: error.message });
     }
   });
@@ -1632,7 +1658,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get user total revenue
   app.get('/api/users/:userId/revenue', async (req, res) => {
     try {
+      console.log(`Calculating revenue for user ${req.params.userId}`);
       const revenue = await storage.getUserTotalRevenue(req.params.userId);
+      console.log(`User ${req.params.userId} total revenue: $${revenue}`);
       res.json({ revenue });
     } catch (error: any) {
       console.error('Get user revenue error:', error);
