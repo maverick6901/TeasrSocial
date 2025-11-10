@@ -2,12 +2,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { PostWithCreator } from '@shared/schema';
 import { TrendingUp, DollarSign } from 'lucide-react';
-import { Link } from 'wouter';
+import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
 function ViralPostCard({ post, index }: { post: PostWithCreator; index: number }) {
   const [revenue, setRevenue] = useState<string>('0.00');
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     const fetchRevenue = async () => {
@@ -30,22 +31,41 @@ function ViralPostCard({ post, index }: { post: PostWithCreator; index: number }
     return () => clearInterval(interval);
   }, [post.id]);
 
+  const handleClick = () => {
+    // Navigate to feed if not already there
+    setLocation('/');
+    
+    // Wait for navigation and DOM update, then scroll to post
+    setTimeout(() => {
+      const postElement = document.querySelector(`[data-post-id="${post.id}"]`);
+      if (postElement) {
+        postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Add a brief highlight effect
+        postElement.classList.add('ring-2', 'ring-orange-500', 'ring-offset-2');
+        setTimeout(() => {
+          postElement.classList.remove('ring-2', 'ring-orange-500', 'ring-offset-2');
+        }, 2000);
+      }
+    }, 100);
+  };
+
   return (
-    <Link key={`${post.id}-${index}`} href={`/post/${post.id}`}>
-      <div className="flex items-center gap-2 px-4 py-1 bg-background/50 backdrop-blur-sm rounded-full border border-orange-500/30 hover:border-orange-500/60 transition-colors cursor-pointer whitespace-nowrap min-w-max">
-        <TrendingUp className="w-4 h-4 text-orange-500" />
-        <span className="text-sm font-medium">
-          {post.title}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          by @{post.creator.username}
-        </span>
-        <div className="flex items-center gap-1 text-xs text-green-600 font-semibold">
-          <DollarSign className="w-3 h-3" />
-          {parseFloat(revenue).toFixed(2)}
-        </div>
+    <div 
+      onClick={handleClick}
+      className="flex items-center gap-2 px-4 py-1 bg-background/50 backdrop-blur-sm rounded-full border border-orange-500/30 hover:border-orange-500/60 transition-colors cursor-pointer whitespace-nowrap min-w-max"
+    >
+      <TrendingUp className="w-4 h-4 text-orange-500" />
+      <span className="text-sm font-medium">
+        {post.title}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        by @{post.creator.username}
+      </span>
+      <div className="flex items-center gap-1 text-xs text-green-600 font-semibold">
+        <DollarSign className="w-3 h-3" />
+        {parseFloat(revenue).toFixed(2)}
       </div>
-    </Link>
+    </div>
   );
 }
 

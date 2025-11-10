@@ -172,7 +172,9 @@ export function PostCard({ post, onVote, onPaymentSuccess }: PostCardProps) {
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
-        <Card className="overflow-visible group transition-all duration-300 border-0 rounded-none shadow-none bg-transparent hover-elevate" data-testid={`card-post-${post.id}`}>
+        <Card 
+          data-post-id={post.id}
+          className="overflow-visible group transition-all duration-300 border-0 rounded-none shadow-none bg-transparent hover-elevate" data-testid={`card-post-${post.id}`}>
           {/* Creator Info - Instagram style at top */}
           <div className="flex items-center space-x-3 px-4 py-3 bg-card border-b border-border">
             <Link href={`/profile/${post.creator.username}`}>
