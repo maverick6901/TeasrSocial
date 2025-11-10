@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, DollarSign, Eye, TrendingUp, Users, FileText, CreditCard } from 'lucide-react';
 import { Payment, Post, User } from '@shared/schema';
-import { useWebSocket } from '@/lib/useWebSocket';
+import { useWebSocketMessage } from '@/lib/WebSocketContext';
 
 interface AdminStats {
   totalRevenue: string;
@@ -62,7 +62,7 @@ export default function Admin() {
   });
 
   // WebSocket for live updates
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'viewUpdate' || message.type === 'voteUpdate' || message.type === 'viralNotification') {
       // Refresh admin stats when any engagement happens
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stats'] });

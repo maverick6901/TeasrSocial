@@ -12,7 +12,7 @@ import { Sparkles, TrendingUp, Users, Grid3x3 } from "lucide-react";
 import { PostWithCreator } from "@shared/schema";
 import { useWallet } from "@/lib/wallet";
 import { useInvestorDashboard } from "@/hooks/use-investor-dashboard";
-import { useWebSocket } from "@/lib/useWebSocket";
+import { useWebSocketMessage } from "@/lib/WebSocketContext";
 
 export default function InvestorShowcase() {
   const [gridView, setGridView] = useState<"single" | "grid">("grid");
@@ -20,7 +20,7 @@ export default function InvestorShowcase() {
   const { data: investorData, refetch: refetchInvestorData } = useInvestorDashboard(address);
 
   // Refresh investor data when WebSocket receives updates
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'buyoutUpdate' && message.payload?.investorEarnings) {
       refetchInvestorData();
     }

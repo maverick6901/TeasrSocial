@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Upload } from 'lucide-react';
 import { PostWithCreator } from '@shared/schema';
 import { useWallet } from '@/lib/wallet';
-import { useWebSocket } from '@/lib/useWebSocket';
+import { useWebSocketMessage } from '@/lib/WebSocketContext';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
@@ -39,7 +39,7 @@ export default function Feed() {
   });
 
   // WebSocket for live vote and view updates
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'voteUpdate' && message.payload) {
       // Update post vote counts in real-time
       queryClient.setQueryData(['/api/posts'], (oldPosts: PostWithCreator[] | undefined) => {

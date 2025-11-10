@@ -9,7 +9,7 @@ import { VoteButtons } from './VoteButtons';
 import { PaymentModal } from './PaymentModal';
 import { Comments } from './Comments';
 import { useWallet } from '@/lib/wallet';
-import { useWebSocket } from '@/lib/useWebSocket';
+import { useWebSocketMessage } from '@/lib/WebSocketContext';
 import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -61,7 +61,7 @@ export function PostCard({ post, onVote, onPaymentSuccess }: PostCardProps) {
   }, [post.id, post.buyoutPrice]);
 
   // Listen for real-time updates
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'viewUpdate' && message.payload?.postId === post.id) {
       setViewCount(message.payload.viewCount);
     }

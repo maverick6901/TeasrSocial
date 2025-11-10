@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InvestorDashboard } from "@shared/schema";
 import { useEffect } from 'react';
-import { useWebSocket } from '@/lib/useWebSocket';
+import { useWebSocketMessage } from '@/lib/WebSocketContext';
 
 export function useInvestorDashboard(walletAddress?: string | null) {
   const queryClient = useQueryClient();
 
   // Listen for buyout updates and earnings updates via WebSocket
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'buyoutUpdate' && message.payload?.investorEarnings) {
       console.log('Received buyout update, invalidating investor dashboard');
       queryClient.invalidateQueries({ queryKey: ['/api/investors/dashboard', walletAddress] });

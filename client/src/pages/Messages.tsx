@@ -12,7 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import type { DirectMessageWithUsers, User as UserType } from '@shared/schema';
 import { useLocation } from 'wouter';
 import { Navbar } from '@/components/Navbar';
-import { useWebSocket } from '@/lib/useWebSocket';
+import { useWebSocketMessage } from '@/lib/WebSocketContext';
 import { apiRequest } from '@/lib/queryClient';
 
 interface Conversation {
@@ -89,7 +89,7 @@ export default function Messages() {
   // -----------------------------
   // 4. WebSocket (Live Updates)
   // -----------------------------
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'newMessage' && message.payload) {
       const msg = message.payload as DirectMessageWithUsers;
 

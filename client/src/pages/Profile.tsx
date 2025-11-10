@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { PostCard } from '@/components/PostCard';
 import { Navbar } from '@/components/Navbar';
-import { useWebSocket } from '@/lib/useWebSocket';
+import { useWebSocketMessage } from '@/lib/WebSocketContext';
 import { ReferralDashboard } from '@/components/ReferralDashboard';
 import { InvestorEarnings } from "@/components/InvestorEarnings";
 import { GridToggle } from "@/components/GridToggle";
@@ -135,7 +135,7 @@ export default function Profile() {
   const { data: investorData, refetch: refetchInvestorData } = useInvestorDashboard(address);
 
   // Refresh investor data when WebSocket receives updates
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'buyoutUpdate' && message.payload?.investorEarnings) {
       refetchInvestorData();
     }
@@ -205,7 +205,7 @@ export default function Profile() {
   }) || [];
 
   // WebSocket for live updates
-  useWebSocket((message) => {
+  useWebSocketMessage((message) => {
     if (message.type === 'viewUpdate' && message.payload) {
       queryClient.setQueryData(['/api/posts', address], (oldPosts: PostWithCreator[] | undefined) => {
         if (!oldPosts) return oldPosts;
